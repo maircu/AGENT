@@ -35,51 +35,97 @@ class VisualizationService:
         "dark": "#2C3E50"
     }
     
-    def generate_radar_chart(self, dimension_scores: List[DimensionScore]) -> Dict[str, Any]:
+   def generate_radar_chart(self, dimension_scores: List[DimensionScore], avg_scores: List[float] = None) -> Dict[str, Any]:
         """
-        生成雷达图
+        生成高精度的多维度能力评估对比雷达图
         
         Args:
-            dimension_scores: 各维度的评分列表
-        
-        Returns:
-            Dict[str, Any]: 雷达图的配置数据
+            dimension_scores: 当前学生的维度评分列表
+            avg_scores: 全体/班级平均分列表（顺序需与维度一致）。若为 None 则只显示个人数据。
         """
-        # 准备数据
+        # 1. 准备和转换基础数据
         dimensions = []
         scores = []
-        
         for score in dimension_scores:
             dimension_name = self.DIMENSION_NAMES.get(score.dimension, score.dimension.value)
             dimensions.append(dimension_name)
             scores.append(score.score)
-        
-        # 创建雷达图
+
+        # 如果没有传入均值，这里模拟一组均值数据（或者你可以设为全 0/全 5）
+        if avg_scores is None:
+            avg_scores = [7.5, 7.0, 6.8, 7.2, 7.0, 6.5] # 假设总分是 10
+
+        # --- 核心优化点：闭合数据环 ---
+        # Plotly 雷达图如果不手动把第一个点加到末尾，线条不会首尾相连
+        plot_dimensions = dimensions + [dimensions[0]]
+        plot_scores = scores + [scores[0]]
+        plot_avg = avg_scores + [avg_scores[0]]
+
         fig = go.Figure()
-        
+
+        # 2. 添加【班级平均】轨迹 (作为背景基准)
         fig.add_trace(go.Scatterpolar(
-            r=scores,
-            theta=dimensions,
+            r=plot_avg,
+            theta=plot_dimensions,
             fill='toself',
-            name='能力评估',
-            fillcolor=self.COLORS["primary"],
-            opacity=0.6,
-            line=dict(color=self.COLORS["primary"])
+            name='班级平均水平',
+            fillcolor='rgba(200, 200, 200, 0.2)', # 浅灰色填充
+            line=dict(color='gray', width=2, dash='dash'), # 灰色虚线
+            marker=dict(size=4)
         ))
-        
-        # 配置图表
+
+        # 3. 添加【个人表现】轨迹 (高亮突出)
+        fig.add_trace(go.Scatterpolar(
+            r=plot_scores,
+            theta=plot_dimensions,
+            fill='toself',
+            name='学生个人表现',
+            fillcolor='rgba(99, 110, 250, 0.35)', # 半透明主色
+            line=dict(color='#636EFA', width=4),     # 加粗实线
+            marker=dict(
+                size=12, 
+                symbol='circle-dot',
+                color='#636EFA'
+            )
+        ))
+
+        # 4. 深度布局优化 (大字体 & 清爽背景)
         fig.update_layout(
             polar=dict(
+                bgcolor="white",
                 radialaxis=dict(
                     visible=True,
-                    range=[0, 10]
+                    range=[0, 10], # 假设分值范围 0-10
+                    gridcolor="#F0F0F0",
+                    tickfont=dict(size=14, color="#999999")
+                ),
+                angularaxis=dict(
+                    # 关键：调大维度标签字体（3倍于默认，约18-20px）
+                    tickfont=dict(size=20, color="black", weight="bold"),
+                    gridcolor="#F0F0F0",
+                    rotation=90,
+                    direction="clockwise"
                 )
             ),
-            title="学生多维度能力评估雷达图",
-            showlegend=False
+            title=dict(
+                text="<b>学生综合能力评估报告</b>",
+                font=dict(size=30, color="#1A1A1A"), # 标题大字体
+                x=0.5,
+                y=0.98
+            ),
+            legend=dict(
+                orientation="h", # 横向图例
+                yanchor="bottom",
+                y=-0.2,
+                xanchor="center",
+                x=0.5,
+                font=dict(size=16)
+            ),
+            margin=dict(l=100, r=100, t=120, b=100),
+            paper_bgcolor="rgba(0,0,0,0)"
         )
-        
-        # 转换为JSON格式
+
+        # 转换为字典供前端解析
         return fig.to_dict()
     
     def generate_score_card(self, evaluation_result: EvaluationResult) -> Dict[str, Any]:
